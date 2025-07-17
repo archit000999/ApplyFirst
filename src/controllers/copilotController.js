@@ -1,54 +1,94 @@
 const CopilotConfig = require('../models/CopilotConfig');
 
-const createConfig = async (req, res) => {
+// PATCH - Create or Update copilot configuration
+const patchConfig = async (req, res) => {
   try {
-    const config = new CopilotConfig({
-      userId: req.user._id,
-      name: req.body.name || 'New Copilot',
-      ...req.body
-    });
+    const userId = req.user._id;
+    const updateData = req.body;
+    const { id } = req.params; // Check if ID is provided in URL
 
-    await config.save();
-    res.status(201).json({
-      message: 'Copilot config created successfully',
-      config
-    });
-  } catch (error) {
-    console.error('Create config error:', error);
-    res.status(500).json({ error: error.message });
-  }
-};
+    let config;
 
-const updateConfig = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const config = await CopilotConfig.findOneAndUpdate(
-      { _id: id, userId: req.user._id },
-      req.body,
-      { new: true, runValidators: true }
-    );
+    if (id) {
+      // If ID is provided, update that specific configuration
+      config = await CopilotConfig.findOne({ 
+        _id: id,
+        userId: userId
+      });
 
-    if (!config) {
-      return res.status(404).json({ error: 'Config not found' });
+      if (!config) {
+        return res.status(404).json({ error: 'Config not found' });
+      }
+
+      // Ensure stepCompleted progresses forward
+      if (updateData.stepCompleted) {
+        updateData.stepCompleted = Math.max(config.stepCompleted || 1, updateData.stepCompleted);
+      }
+
+      Object.assign(config, updateData);
+      await config.save();
+
+      res.json({
+        message: 'Copilot config updated successfully',
+        config
+      });
+    } else {
+      // No ID provided - smart create/update logic
+      // First, try to find an existing incomplete configuration (stepCompleted < 4)
+      config = await CopilotConfig.findOne({ 
+        userId: userId,
+        stepCompleted: { $lt: 4 }
+      });
+
+      if (!config) {
+        // If no incomplete config, check for any existing config to update
+        config = await CopilotConfig.findOne({ userId: userId });
+      }
+
+      if (config) {
+        // Update existing configuration
+        // Ensure stepCompleted progresses forward
+        if (updateData.stepCompleted) {
+          updateData.stepCompleted = Math.max(config.stepCompleted || 1, updateData.stepCompleted);
+        }
+
+        Object.assign(config, updateData);
+        await config.save();
+
+        res.json({
+          message: 'Copilot config updated successfully',
+          config
+        });
+      } else {
+        // Create new configuration if none exists
+        config = new CopilotConfig({
+          userId: userId,
+          name: updateData.name || 'My Copilot Configuration',
+          ...updateData
+        });
+
+        await config.save();
+        res.status(201).json({
+          message: 'Copilot config created successfully',
+          config
+        });
+      }
     }
-
-    res.json({
-      message: 'Config updated successfully',
-      config
-    });
   } catch (error) {
-    console.error('Update config error:', error);
+    console.error('Patch config error:', error);
     res.status(500).json({ error: error.message });
   }
 };
 
+// GET - Retrieve all copilot configurations for user
 const getConfigs = async (req, res) => {
   try {
     const configs = await CopilotConfig.find({ userId: req.user._id })
-      .sort({ createdAt: -1 });
+      .sort({ updatedAt: -1 }); // Sort by most recently updated
+
     res.json({
       message: 'Configs retrieved successfully',
-      configs
+      copilots: configs
     });
   } catch (error) {
     console.error('Get configs error:', error);
@@ -56,6 +96,7 @@ const getConfigs = async (req, res) => {
   }
 };
 
+// GET - Retrieve single copilot configuration by ID
 const getConfig = async (req, res) => {
   try {
     const { id } = req.params;
@@ -78,6 +119,7 @@ const getConfig = async (req, res) => {
   }
 };
 
+// DELETE - Remove copilot configuration (keeping for admin purposes)
 const deleteConfig = async (req, res) => {
   try {
     const { id } = req.params;
@@ -97,57 +139,9 @@ const deleteConfig = async (req, res) => {
   }
 };
 
-const updateStep = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { step, data } = req.body;
-
-    const updateField = {};
-    switch(step) {
-      case 1:
-        updateField.jobSetup = data;
-        break;
-      case 2:
-        updateField.filters = data;
-        break;
-      case 3:
-        updateField.screeningData = data;
-        break;
-      case 4:
-        updateField.finalConfig = data;
-        updateField.isCompleted = true;
-        break;
-      default:
-        return res.status(400).json({ error: 'Invalid step number' });
-    }
-
-    updateField.stepCompleted = Math.max(step, updateField.stepCompleted || 1);
-
-    const config = await CopilotConfig.findOneAndUpdate(
-      { _id: id, userId: req.user._id },
-      { $set: updateField },
-      { new: true, runValidators: true }
-    );
-
-    if (!config) {
-      return res.status(404).json({ error: 'Config not found' });
-    }
-
-    res.json({
-      message: `Step ${step} updated successfully`,
-      config
-    });
-  } catch (error) {
-    console.error('Update step error:', error);
-    res.status(500).json({ error: error.message });
-  }
-};
-
 module.exports = {
-  createConfig,
-  updateConfig,
+  patchConfig,
   getConfigs,
   getConfig,
-  deleteConfig,
-  updateStep
+  deleteConfig
 };

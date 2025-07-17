@@ -1,12 +1,10 @@
 const express = require('express');
 const { auth } = require('../middleware/auth');
 const {
-  createConfig,
-  updateConfig,
+  patchConfig,
   getConfigs,
   getConfig,
-  deleteConfig,
-  updateStep
+  deleteConfig
 } = require('../controllers/copilotController');
 const { copilotValidationRules, validateRequest } = require('../utils/validation');
 
@@ -15,13 +13,19 @@ const router = express.Router();
 // All routes require authentication
 router.use(auth);
 
+// GET - Retrieve all configurations
 router.get('/', getConfigs);
-router.post('/', copilotValidationRules(), validateRequest, createConfig);
-router.get('/:id', getConfig);
-router.put('/:id', updateConfig);
-router.delete('/:id', deleteConfig);
 
-// Special route for updating specific steps
-router.put('/:id/step', updateStep);
+// PATCH - Create or update configuration (unified endpoint)
+router.patch('/', copilotValidationRules(), validateRequest, patchConfig);
+
+// GET - Retrieve specific configuration by ID
+router.get('/:id', getConfig);
+
+// PATCH - Update specific configuration by ID
+router.patch('/:id', patchConfig);
+
+// DELETE - Remove configuration (admin use)
+router.delete('/:id', deleteConfig);
 
 module.exports = router;

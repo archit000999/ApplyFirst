@@ -20,7 +20,8 @@ const userValidationRules = () => {
 
 const copilotValidationRules = () => {
   return [
-    body('name').notEmpty().trim().withMessage('Copilot name is required'),
+    // Make name optional since it can be auto-generated
+    body('name').optional().trim(),
   ];
 };
 
